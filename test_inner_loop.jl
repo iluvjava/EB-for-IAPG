@@ -45,12 +45,12 @@ end
 
 
 @testset "TESTING THE INNER LOOP SOLVER" begin
-    m = 2^8
-    n = 2^10
+    m = 2^5
+    n = 2^5
     A = randn(m, n)
-    ω = OneNormFunction(1)
+    ω = OneNormFunction(10)
     y = randn(n)
-    λ = 2000
+    λ = 0.001
     global InxProx = nothing
 
     function create_instance()
@@ -60,10 +60,10 @@ end
 
     function try_running_it()
         itr_max = 2^16
-        v = Vector{Float64}()
+        global v = Vector{Float64}()
         @time j = do_ista_iteration!(
             InxProx, y, λ, itr_max=itr_max, epsilon=1e-3, 
-            duality_gaps=v
+            duality_gaps=v, backtracking=true
         )
         p = eval_primal_objective_at_current_point(InxProx, y, λ)
         q = eval_dual_objective_at_current_point(InxProx, y, λ)
@@ -73,7 +73,7 @@ end
         @info "Final Duality Gap = p + q = $(p + q)"
         p = lineplot(1:length(v), v.|>log2, title="Duality Gaps")
         p|>print
-        return j <= itr_max
+        return j < itr_max
     end
 
     @test create_instance()

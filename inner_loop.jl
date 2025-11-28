@@ -129,29 +129,48 @@ And we will mutate them.
 
 """
 function _update_dual!(
-    this::InexactProximalPoint,     # will mutate. 
+    this::InexactProximalPoint,     # will mutate, specifically, t
     v⁺::AbstractVector,             # will mutate.
     AAᵀv::AbstractVector,           # will Mutate. 
     ∇::AbstractVector,              # will mutate. 
     v::AbstractVector,              # will reference. 
     Ay::AbstractVector,             # will reference. 
-    Aᵀv::AbstractVector,            # will reference
-    λ::Number
-)
+    Aᵀv::AbstractVector,            # will ref
+    λ::Number,                      # will ref
+    τ::Number,                      # will ref
+    backtracking::Bool=true
+)::Number
     # Referencing. 
     A = this.A
-    τ = (this.t)*λ
+    Aᵀ = this.A_adj
     ω = this.omega
-    # Mutate AᵀAv 
+    # Mutate AᵀAv, no need for Aᵀv anymore. 
     mul!(AAᵀv, A, Aᵀv)
-    ∇ .= @. v - (1/τ)*(λ*AAᵀv - Ay)
-    # Mutae v⁺
-    dprox!(
-        ω, 
-        v⁺,     # mutates
-        ∇, 1/τ  # no mutate. 
-    )
-    return nothing
+
+    while true
+        ∇ .= @. v - (1/τ)*(λ*AAᵀv - Ay)
+        # Mutae v⁺
+        dprox!(
+            ω, 
+            v⁺,     # mutates
+            ∇, 1/τ  # no mutate. 
+        )
+        if !backtracking 
+            break # we are done here. 
+        end
+        ∇ .= @. v⁺ - v
+        d = (τ/2)*dot(∇, ∇)
+        mul!(Aᵀv, Aᵀ, ∇)
+        if τ < Inf64 && (λ/2)*dot(Aᵀv, Aᵀv) <= d
+            # good! shrink τ to speed up future iteration. 
+            τ /= 2^(1/2048)
+            break
+        else
+            # not good, increase τ, and do again. 
+            τ *= 2
+        end
+    end
+    return τ
 end
 
 
@@ -172,8 +191,8 @@ function do_ista_iteration!(
     lambda::Number; 
     epsilon::Number=1e-6,
     itr_max::Int=8000, 
-    # will mutate
-    duality_gaps::Union{Vector, Nothing}=nothing
+    duality_gaps::Union{Vector, Nothing}=nothing, # will mutate
+    backtracking::Bool=true
 )::Number
     # check dimensions of inputs. 
     @assert size(this.v) == size(v_out)
@@ -181,9 +200,10 @@ function do_ista_iteration!(
     @assert epsilon > 0
     @assert lambda > 0
 
-    # Referencing assigned resources. 
+    # Referenced Parameters: 
     λ = lambda
     ϵ = epsilon
+    τ = (this.t)*(λ)   # step size
     ω = this.omega
     z = this.z
     v = this.v
@@ -199,10 +219,10 @@ function do_ista_iteration!(
     Ay = A*y
     # Starting the forloop, with feasible (z, v) primal dual initial guesses. 
     z .= y
-    dprox!(ω, v, Ay) 
+    dprox!(ω, v, Ay)
     mul!(Aᵀv, Aᵀ, v)
     j = 0
-    while j <= itr_max
+    while j < itr_max
         # update duality gap optimality condition, on (z, v)
         mul!(Az, A, z)
         z .= @. z - y 
@@ -218,13 +238,14 @@ function do_ista_iteration!(
         end
         # perform iteration
         j += 1
-        _update_dual!(
+        τ = _update_dual!(
             this, 
-            v⁺, AAᵀv, this.v3,  # will mutate
-            v, Ay, Aᵀv, λ       # no mutate
+            v⁺, AAᵀv, this.v3,      # will mutate
+            v, Ay, Aᵀv, λ, τ,       # no mutate
+            backtracking,
         )
         # update reference (z, v) to (z⁺, v⁺)
-        mul!(Aᵀv, Aᵀ, v⁺)
+        mul!(Aᵀv, Aᵀ, v)
         z⁺ .= @. y - λ*Aᵀv
         z .= z⁺
         v .= v⁺
@@ -239,7 +260,8 @@ function do_ista_iteration!(
     lambda::Number;
     epsilon::Number=1e-6,
     itr_max::Int=8000,
-    duality_gaps::Union{Vector, Nothing}=nothing
+    duality_gaps::Union{Vector, Nothing}=nothing,
+    backtracking::Bool=true
 )::Number 
 
 return do_ista_iteration!(
@@ -250,6 +272,7 @@ return do_ista_iteration!(
         lambda, 
         epsilon=epsilon, 
         itr_max=itr_max, 
-        duality_gaps=duality_gaps
+        duality_gaps=duality_gaps,
+        backtracking=backtracking
     )
 end

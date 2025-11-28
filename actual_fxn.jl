@@ -80,8 +80,7 @@ function dval(
     this::OneNormFunction, 
     x::FiniteEuclideanSpace
 )::Number
-    n = norm(x, Inf)
-    if n > this.lambda
+    if norm(x, Inf) > this.lambda
         return Inf64
     end
     return 0.0
@@ -92,7 +91,7 @@ end
 
 """
 It's a class made to compute: 
-x ↦ (a/2)‖Ax - b‖^2. 
+x ↦ (α/2)‖Ax - b‖^2. 
 
 
 """
