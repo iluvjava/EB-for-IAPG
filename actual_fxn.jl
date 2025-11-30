@@ -64,7 +64,7 @@ function dprox!(
     this::OneNormFunction, 
     y_out::FiniteEuclideanSpace,
     y::FiniteEuclideanSpace, 
-    rho::Number=1
+    rho::Number=1 
 )::Nothing
     λ = this.lambda
     y_out .= @. min(max(y, -λ), λ)
@@ -91,23 +91,59 @@ end
 
 """
 It's a class made to compute: 
-x ↦ (α/2)‖Ax - b‖^2. 
+f = x ↦ (α/2)‖Ax - b‖_F^2. 
+∇f = x ↦ αAᵀ(Ax - b)
 
 
 """
 struct ResidualNormSquared <: ClCnvxFxn
+    # parameters for the function. 
     a::Number
-    A::AbstractMatrix
-    b::AbstractMatrix
+    A::AbstractMatrix{Float64}
+    AT::AbstractMatrix{Float64}
+    b::AbstractVecOrMat{Float64}
+    # For computing
+    "p is the same shape as x "
+    p::AbstractVecOrMat{Float64}
+    "q is the same shape as Ax "
+    q::AbstractVecOrMat{Float64}
+
+
+
+    function ResidualNormSquared(
+        A::AbstractMatrix{Float64}, 
+        b::AbstractVecOrMat{Float64}, 
+        alpha::Number=1
+    )
+        @assert alpha >= 0 "alpha in ResidualNormSquare type must non-negative."
+        # Initialize intermediate storage of A.         
+        _, n = size(A)
+        p = ndims(b) == 1 ? zeros(n) : zeros(n, size(b, 2))
+        Aᵀ = transpose(A)
+        q = A*p
+        return new(alpha, A, Aᵀ, b, p, q)
+    end
 
 end
 
+"""
+Assign differentiable trait to ResidualNormSquared Type
+"""
 function differentiable_trait_assigner(
     ::ResidualNormSquared
 )::TraitsOfClCnvxFxn
     return Differentiable()
 end
 
+function (this::ResidualNormSquared)(x::AbstractVecOrMat)::Number
+    A = this.A
+    B = this.b
+    α = this.alpha
+    q = this.q
+    mul!(q, A, x)
+    q .-= B
+    return (α/2)*dot(q, q)
+end
 
 """
 Compute the gradient together with the function value at a point, 
@@ -120,6 +156,30 @@ function grad_and_fxnval!(
     x::FiniteEuclideanSpace,
     x_out::FiniteEuclideanSpace
 )::Number
-    # TODO: IMPLEMENT THIS ONE HERE. 
-    error("I haven't implemented this yet. ")
+    A = this.A
+    Aᵀ = this.AT
+    B = this.b
+    α = this.alpha
+    q = this.q
+    
+    mul!(q, A, x)
+    q .-= B 
+    mul!(p, Aᵀ, q)
+    x_out .= @. α*p
+    return (α/2)*dot(q, q)
+end
+
+
+# ------------------------------------------------------------------------------
+
+"""
+It's a class made to model the function: 
+X ↦ (α/2)‖A*X*C - B‖_F^2
+
+Here, A, C are both matrices. 
+This function can represent more advanced image bluring tasks. 
+
+"""
+struct MatrixResidualNormSquared <: ClCnvxFxn
+    
 end

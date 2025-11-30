@@ -64,7 +64,9 @@ end
 Evaluates the proximal operator of the dual of function (x |> f(x)) at y. 
 
 We use the Resolvent Identity of proximal operator. 
-prox[ρ(g⋆)](y) = y - ρ prox[g/ρ](y/ρ)
+prox[ρ(g⋆)](y) = y - ρ prox[g/ρ](y/ρ).
+
+WARN: This has numerical accuracies issues on Float64 in practice. 
 """
 function dprox!(
     this::ClCnvxFxn, 

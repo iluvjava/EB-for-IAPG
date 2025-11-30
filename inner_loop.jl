@@ -12,8 +12,8 @@ This struct is designed to inexactly evaluate proximal problem of the form:
 struct InexactProximalPoint
     
     # Fieds that remains constants and shouldn't be changed follow: 
-    A::AbstractMatrix
-    A_adj::AbstractMatrix
+    A::AbstractMatrix{Float64}
+    A_adj::AbstractMatrix{Float64}
     "omega as a type of `ClCnvxFxn` must have trait `Proxable`"
     omega::ClCnvxFxn
     """
@@ -22,23 +22,23 @@ struct InexactProximalPoint
     t::Number
     
     # Fields that will mutate when running now follows.
-    z::AbstractVector
+    z::Vector{Float64}
     "Intermediate step for Au, for primal objective computations."
-    z1::AbstractVector
-    v::AbstractVector
+    z1::Vector{Float64}
+    v::Vector{Float64}
     "Intermediate: Aᵀv"
-    v1::AbstractVector
+    v1::Vector{Float64}
     "Intermediate: AAᵀv"
-    v2::AbstractVector
+    v2::Vector{Float64}
     "Intermediate step for computing prox of ω⋆"
-    v3::AbstractVector
+    v3::Vector{Float64}
 
 
     function InexactProximalPoint(
-        A::AbstractMatrix, 
-        A_adj::AbstractMatrix,
-        z::AbstractVector, 
-        v::AbstractVector,
+        A::AbstractMatrix{Float64}, 
+        A_adj::AbstractMatrix{Float64},
+        z::Vector{Float64}, 
+        v::Vector{Float64},
         omega::ClCnvxFxn, 
     )
         # parameter assignments.
@@ -55,7 +55,7 @@ struct InexactProximalPoint
     end
 
     function InexactProximalPoint(
-        A::AbstractMatrix, 
+        A::AbstractMatrix{Float64}, 
         omega::ClCnvxFxn, 
     )
         # parameter assignments.
@@ -64,6 +64,7 @@ struct InexactProximalPoint
         (m, n) = size(A)
         z = zeros(n)
         v = zeros(m)
+        dprox!(omega, v, zeros(m)) # initial guess. 
         return InexactProximalPoint(
             A, A_adj, z, v, omega
         )
@@ -71,19 +72,13 @@ struct InexactProximalPoint
 end
 
 
-# TODO: Here is a list of things to do for this struct. 
-# - [ ]: a function to evaluate the objective value of the primal, given λ. 
-# - [ ]: a function to eval the objetive of the dual, given λ. 
-# - [ ]: The duality gap for terminations. 
-# - [ ]: Given a point and prox problem regularization parameter λ, accuracy ϵ,
-#        a point y, it evaluates the proximal. 
 
 """
 Returns the value of : `ω(Az) + 1/(2λ)‖u - v‖²`. 
 """
 function eval_primal_objective_at_current_point(
     this::InexactProximalPoint, 
-    y::AbstractVector, 
+    y::Vector{Float64}, 
     lambda::Number
 )::Number
     ω = this.omega
@@ -96,10 +91,9 @@ end
 
 function eval_dual_objective_at_current_point(
     this::InexactProximalPoint, 
-    y::AbstractVector,
+    y::Vector{Float64},
     lambda::Number
 )::Number
-    # TODO: IMPLEMENT THIS ONE HERE. 
     v = this.v
     Aᵀv = (this.A_adj)*v
     λ = lambda 
@@ -130,12 +124,12 @@ And we will mutate them.
 """
 function _update_dual!(
     this::InexactProximalPoint,     # will mutate, specifically, t
-    v⁺::AbstractVector,             # will mutate.
-    AAᵀv::AbstractVector,           # will Mutate. 
-    ∇::AbstractVector,              # will mutate. 
-    v::AbstractVector,              # will reference. 
-    Ay::AbstractVector,             # will reference. 
-    Aᵀv::AbstractVector,            # will ref
+    v⁺::Vector{Float64},            # will mutate.
+    AAᵀv::Vector{Float64},          # will Mutate. 
+    ∇::Vector{Float64},             # will mutate. 
+    v::Vector{Float64},             # will reference. 
+    Ay::Vector{Float64},            # will reference. 
+    Aᵀv::Vector{Float64},           # will ref
     λ::Number,                      # will ref
     τ::Number,                      # will ref
     backtracking::Bool=true
@@ -185,9 +179,9 @@ tolerance is not satisfied.
 """
 function do_ista_iteration!(
     this::InexactProximalPoint,     # will mutate
-    v_out::AbstractVector,          # will mutate
-    z_out::AbstractVector,          # will mutate
-    y::AbstractVector,              # will reference
+    v_out::Vector{Float64},          # will mutate
+    z_out::Vector{Float64},          # will mutate
+    y::Vector{Float64},              # will reference
     lambda::Number; 
     epsilon::Number=1e-6,
     itr_max::Int=8000, 
@@ -213,13 +207,13 @@ function do_ista_iteration!(
     Aᵀv = this.v1
     AAᵀv = this.v2
     Az = this.z1
-    z⁺ = z_out  
+    z⁺ = z_out
     v⁺ = v_out
     # Ends
     Ay = A*y
     # Starting the forloop, with feasible (z, v) primal dual initial guesses. 
-    z .= y
-    dprox!(ω, v, Ay)
+    # z .= y
+    # dprox!(ω, v, v)
     mul!(Aᵀv, Aᵀ, v)
     j = 0
     while j < itr_max
@@ -256,7 +250,7 @@ end
 
 function do_ista_iteration!(
     this::InexactProximalPoint,
-    y::AbstractVector,     # will reference
+    y::Vector{Float64},     # will reference
     lambda::Number;
     epsilon::Number=1e-6,
     itr_max::Int=8000,

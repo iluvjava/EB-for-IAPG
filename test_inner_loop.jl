@@ -1,9 +1,9 @@
 using Test
 using UnicodePlots
 using SparseArrays
+include("import_inner_loop.jl")
 
 @testset "TESTING THE FUNCTION ‖⋅‖_1 " begin
-    include("import_inner_loop.jl")
 
     # Test subjects and function now follows. 
     λ = 1.1
@@ -44,9 +44,14 @@ using SparseArrays
 end
 
 
+@testset "Testing ResidualNormSquared" begin 
+    
+end
+
+
 @testset "TESTING THE INNER LOOP SOLVER" begin
-    m = 2^5
-    n = 2^5
+    m = 2^8
+    n = 2^8
     A = randn(m, n)
     ω = OneNormFunction(10)
     y = randn(n)
@@ -74,6 +79,10 @@ end
         p = lineplot(1:length(v), v.|>log2, title="Duality Gaps")
         p|>print
         return j < itr_max
+    end
+
+    function try_running_it_sparse_matrix()
+
     end
 
     @test create_instance()
