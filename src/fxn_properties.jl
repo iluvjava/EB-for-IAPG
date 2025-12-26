@@ -40,11 +40,14 @@ function grad_and_fxnval!(
     x_out::FiniteEuclideanSpace, 
     x::FiniteEuclideanSpace,
 )::Number
-    
     return grad_and_fxnval!(
         differentiable_trait_assigner(this), 
         this, x, x_out
     ) 
+end
+
+function glipz(this::ClCnvxFxn)
+    return glipz( differentiable_trait_assigner(this), this)
 end
 
 function prox!(
@@ -132,7 +135,13 @@ function grad_and_fxnval!(
     x_out::FiniteEuclideanSpace
 )::Number
     # IMPLEMENT THIS FOR SPECIFIC TYPE
-    error("Function `grad_and_fxnval` not yet implemented for $(typeof(this))")
+    error("Function `grad_and_fxnval` not yet implemented for $(typeof(this)). ")
+end
+
+function glipz(
+    ::Differentiable, this::ClCnvxFxn
+)::Number
+    error("Function `glipz` not yet implemented for $(this|>typeof). ")
 end
 
 ### ============================================================================

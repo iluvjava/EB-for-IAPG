@@ -6,7 +6,9 @@
 using LinearAlgebra
 
 """
-λ‖⋅‖_1 
+================================================================================
+FUNCTION: λ‖⋅‖_1 
+================================================================================
 """
 struct OneNormFunction <:ClCnvxFxn
     lambda::Float64
@@ -61,6 +63,7 @@ The Fenchel dual of λ‖⋅‖_1 would be indicator of {x: ‖x‖_∞ ≤ λ}.
 Hence the prox is projecting onto hyper box: [-λ, λ]^n
 """
 function dprox!(
+    ::Proxable,
     this::OneNormFunction, 
     y_out::FiniteEuclideanSpace,
     y::FiniteEuclideanSpace, 
@@ -90,15 +93,23 @@ end
 # ------------------------------------------------------------------------------
 
 """
+================================================================================
+FUNCTION: (α/2)‖Ax - b‖_F^2
+================================================================================
+
 It's a class made to compute: 
 f = x ↦ (α/2)‖Ax - b‖_F^2. 
 ∇f = x ↦ αAᵀ(Ax - b)
+
+- `b` is a matrix or a vector. Cannot be a number. 
+- `A` is a matrix. 
+- `x` is a matrix or a vector, depends on what `A, b` are. 
 
 
 """
 struct ResidualNormSquared <: ClCnvxFxn
     # parameters for the function. 
-    a::Number
+    alpha::Number
     A::AbstractMatrix{Float64}
     AT::AbstractMatrix{Float64}
     b::AbstractVecOrMat{Float64}
@@ -108,11 +119,9 @@ struct ResidualNormSquared <: ClCnvxFxn
     "q is the same shape as Ax "
     q::AbstractVecOrMat{Float64}
 
-
-
     function ResidualNormSquared(
-        A::AbstractMatrix{Float64}, 
-        b::AbstractVecOrMat{Float64}, 
+        A::AbstractMatrix, 
+        b::AbstractVecOrMat, 
         alpha::Number=1
     )
         @assert alpha >= 0 "alpha in ResidualNormSquare type must non-negative."
@@ -132,6 +141,8 @@ Assign differentiable trait to ResidualNormSquared Type
 function differentiable_trait_assigner(
     ::ResidualNormSquared
 )::TraitsOfClCnvxFxn
+    # Return the trait type: Differentiable for the differentiable
+    # interface. 
     return Differentiable()
 end
 
@@ -140,6 +151,7 @@ function (this::ResidualNormSquared)(x::AbstractVecOrMat)::Number
     B = this.b
     α = this.alpha
     q = this.q
+
     mul!(q, A, x)
     q .-= B
     return (α/2)*dot(q, q)
@@ -161,14 +173,26 @@ function grad_and_fxnval!(
     B = this.b
     α = this.alpha
     q = this.q
+    p = this.p
     
-    mul!(q, A, x)
-    q .-= B 
-    mul!(p, Aᵀ, q)
-    x_out .= @. α*p
+    mul!(q, A, x)       # q <- Ax
+    q .-= B             # q <- Ax - b
+    mul!(p, Aᵀ, q)      # p <- Aᵀ(Ax - b)
+    x_out .= @. α*p     # x_out <- α*Aᵀ(Ax - b)
+
+    # Return function value. 
     return (α/2)*dot(q, q)
 end
 
+function glipz(
+    ::Differentiable, 
+    this::ResidualNormSquared
+)
+    α = this.alpha
+    A = this.A
+    A⁺ = this.AT
+    return α*norm(A⁺*A)
+end
 
 # ------------------------------------------------------------------------------
 

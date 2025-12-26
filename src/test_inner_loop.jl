@@ -53,8 +53,6 @@ end
         @info "Making instance successful."
         return true
     end
-
-    
     
     @test make_instance()
 end
@@ -77,7 +75,7 @@ end
     function try_running_it()
         itr_max = 2^16
         global v = Vector{Float64}()
-        @time j = do_ista_iteration!(
+        @time j = do_pgd_iteration!(
             InxProx, y, λ, itr_max=itr_max, epsilon=1e-3, 
             duality_gaps=v, backtracking=true
         )

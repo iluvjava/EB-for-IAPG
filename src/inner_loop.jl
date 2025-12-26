@@ -23,15 +23,18 @@ struct InexactProximalPoint
     
     # Fields that will mutate when running now follows.
     z::Vector{Float64}
-    "Intermediate step for Au, for primal objective computations."
-    z1::Vector{Float64}
     v::Vector{Float64}
-    "Intermediate: Aᵀv"
+    "Intermediate: Aᵀv. "
+    z1::Vector{Float64}
+    "Intermediate: z - y. "
+    z2::Vector{Float64}
+    "Intermediate: Az. "
     v1::Vector{Float64}
-    "Intermediate: AAᵀv"
+    "Intermediate: AAᵀv. "
     v2::Vector{Float64}
-    "Intermediate step for computing prox of ω⋆"
+    "Intermediate variable for computing prox of ω⋆"
     v3::Vector{Float64}
+    
 
 
     function InexactProximalPoint(
@@ -44,13 +47,14 @@ struct InexactProximalPoint
         # parameter assignments.
         t = norm(A, 2)^2
         # memory allocations. 
-        z1 = similar(v)  # Az
-        v1 = similar(z)  # Aᵀv
+        v1 = similar(v)  # Az
+        z1 = similar(z)  # Aᵀv
         v2 = similar(v)  # AAᵀv
-        v3 = similar(v)  # proximal gradient on dual objective
+        v3 = similar(v)  # Proximal gradient on ω⋆
+        z2 = similar(z)  # z - y
         return new(
             A, A_adj, omega, t, 
-            z, z1, v, v1, v2, v3
+            z, v, z1, z2, v1, v2, v3
         )
     end
 
@@ -64,7 +68,7 @@ struct InexactProximalPoint
         (m, n) = size(A)
         z = zeros(n)               # Initial guess z. 
         v = zeros(m)
-        dprox!(omega, v, zeros(m)) # Initial guess V. 
+        dprox!(omega, v, zeros(m)) # Initial guess v. 
         return InexactProximalPoint(
             A, A_adj, z, v, omega
         )
@@ -123,7 +127,7 @@ And we will mutate them.
 
 """
 function _update_dual!(
-    this::InexactProximalPoint,     # will mutate, specifically, t
+    this::InexactProximalPoint,     # will mutate. 
     v⁺::Vector{Float64},            # will mutate.
     AAᵀv::Vector{Float64},          # will Mutate. 
     ∇::Vector{Float64},             # will mutate. 
@@ -143,25 +147,24 @@ function _update_dual!(
 
     while true
         ∇ .= @. v - (1/τ)*(λ*AAᵀv - Ay)
-        # Mutae v⁺
+        # v⁺ <- prox[ω](v - (1/τ)*(λ*AAᵀv - Ay))
         dprox!(
-            ω, 
+            ω,      # mutate
             v⁺,     # mutates
-            ∇, 1/τ  # no mutate. 
+            ∇, 1/τ  # ref. 
         )
         if !backtracking 
-            break # we are done here. 
+            break   # we are done here. 
         end
-        ∇ .= @. v⁺ - v
+        ∇ .= @. v⁺ - v 
         d = (τ/2)*dot(∇, ∇)
-        mul!(Aᵀv, Aᵀ, ∇)            # bregman divergence here. 
+        # Aᵀv <- Aᵀ(v⁺ - v) 
+        mul!(Aᵀv, Aᵀ, ∇) 
         if τ < Inf64 && (λ/2)*dot(Aᵀv, Aᵀv) <= d
-            # good! shrink τ to speed up future iteration. 
-            τ /= 2^(1/2048)
+            τ /= 2^(1/2048)     # Shrink τ. Backtracking.  
             break
         else
-            # not good, increase τ, and do again. 
-            τ *= 2
+            τ *= 2              # Increase τ, Line Search. 
         end
     end
     return τ
@@ -170,20 +173,22 @@ end
 
 
 """
-Returns the number of iterations used to achieve the assigned accuracies. 
-It mutates the given vectors. 
+Performs one the entire ISTA iteration. 
+It returns the total number of iterations experienced, if the number is negative, 
+then it's edge cases
 
-It returns the total number of iterations experienced. 
-If the number is -1, it means max iteration reached and the duality gap
-tolerance is not satisfied. 
+1. `-1`, it means max iteration reached and the duality gap tolerance 
+is not satisfied. 
+2. `-2`, it means backtracking line search in the dual problem failed. 
 """
-function do_ista_iteration!(
+function do_pgd_iteration!(
     this::InexactProximalPoint,      # will mutate
     v_out::Vector{Float64},          # will mutate
     z_out::Vector{Float64},          # will mutate
     y::Vector{Float64},              # will reference
-    lambda::Number; 
+    lambda::Number;
     epsilon::Number=1e-6,
+    rho::Number=0, 
     itr_max::Int=8000, 
     duality_gaps::Union{Vector, Nothing}=nothing, # will mutate
     backtracking::Bool=true
@@ -197,6 +202,7 @@ function do_ista_iteration!(
     # Referenced Parameters: 
     λ = lambda
     ϵ = epsilon
+    ρ = rho
     τ = (this.t)*(λ)   # step size
     ω = this.omega
     z = this.z
@@ -205,39 +211,47 @@ function do_ista_iteration!(
     Aᵀ = this.A_adj
     Ay = A*y
     # Mutating running parameters: 
-    Aᵀv = this.v1
+    Az = this.v1
+    Aᵀv = this.z1
     AAᵀv = this.v2
-    Az = this.z1
+    zy = this.z2
     z⁺ = z_out
     v⁺ = v_out    
-    # Starting the forloop, with feasible (z, v) primal dual initial guesses. 
+    # Initial guess z update. 
     z .= y
-    # Initial guess of v is made in the constructor of the instance. 
+    # Initial guess of v update. 
     mul!(Aᵀv, Aᵀ, v)
     j = 0
-    while j < itr_max
-        # update duality gap optimality condition, on (z, v)
+    while true
+        # compute primal dual objective p, q
         mul!(Az, A, z)
-        z .= @. z - y 
-        p  = ω(Az) + dot(z, z)/(2λ)
-        z .= @. z + y
+        zy .= @. z - y 
+        p  = ω(Az) + dot(zy, zy)/(2λ)  
         q = (λ/2)*dot(Aᵀv, Aᵀv) - dot(Aᵀv, y) + dval(ω, v)
-        if !isnothing(duality_gaps)
+        if !isnothing(duality_gaps)  
             push!(duality_gaps, p + q)
         end
-        if p + q <= ϵ
-            # (z⁺, v⁺) from previous iteration satisfies duality gap. 
+        if p + q <= ϵ + (ρ/2)*dot(zy, zy) 
+            # EXITS. (z⁺, v⁺) duality gap reached. 
             break
         end
-        # perform iteration
-        j += 1
+        j += 1; if j > itr_max  
+            # EXITS. Max Iteration. 
+            j = -1
+            break
+        end
         τ = _update_dual!(
             this, 
             v⁺, AAᵀv, this.v3,      # will mutate
             v, Ay, Aᵀv, λ, τ,       # no mutate
             backtracking,
         )
-        # update reference (z, v) to (z⁺, v⁺)
+        if isinf(τ)  
+            # EXITS. Line/Backtracking failed. 
+            j = -2
+            break
+        end
+        # UPDATES. Running parameters
         mul!(Aᵀv, Aᵀ, v)
         z⁺ .= @. y - λ*Aᵀv
         z  .= z⁺
@@ -247,23 +261,25 @@ function do_ista_iteration!(
 end
 
 
-function do_ista_iteration!(
+ function do_pgd_iteration!(
     this::InexactProximalPoint,
     y::Vector{Float64},     # will reference
     lambda::Number;
     epsilon::Number=1e-6,
+    rho::Number=0, 
     itr_max::Int=8000,
     duality_gaps::Union{Vector, Nothing}=nothing,
     backtracking::Bool=true
 )::Number 
 
-return do_ista_iteration!(
+return do_pgd_iteration!(
         this, 
-        similar(this.v), 
-        similar(this.z), 
+        similar(this.v),
+        similar(this.z),
         y,
         lambda, 
         epsilon=epsilon, 
+        rho=rho,
         itr_max=itr_max, 
         duality_gaps=duality_gaps,
         backtracking=backtracking
