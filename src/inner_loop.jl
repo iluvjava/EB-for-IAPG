@@ -261,7 +261,7 @@ function do_pgd_iteration!(
 end
 
 
- function do_pgd_iteration!(
+function do_pgd_iteration!(
     this::InexactProximalPoint,
     y::Vector{Float64},     # will reference
     lambda::Number;

@@ -13,6 +13,8 @@ struct ResultsCollector
     pg_norm::Vector{Float64}
     "Stepsize used, 1/(B + L). "
     ss::Vector{Float64}
+    "Current Iterates. "
+    x::Vector{Float64}
 
     function ResultsCollector()
 
@@ -103,12 +105,12 @@ struct IAPGOuterLoopRunner
         
         # Instantiate
         m, n = size(A)
-        yk = zeros(n); xk = similar(y); vk = similar(y)
-        y_next = similar(y); x_next = similar(y); v_next = similar(y)
-        y1 = similar(y); y2 = similar(y); y3 = similar(y)
+        yk = zeros(n); xk = similar(yk); vk = similar(yk)
+        y_next = similar(yk); x_next = similar(yk); v_next = similar(yk)
+        y1 = similar(yk); y2 = similar(yk); y3 = similar(yk)
 
         v = zeros(m)
-        z = similar(y)
+        z = similar(yk)
         ipp = InexactProximalPoint(
             A, omega
         )
@@ -148,23 +150,23 @@ proximal gradient method.
 """
 function _ipg!(
     this::IAPGOuterLoopRunner,
-    y⁺::Vector{Float64},                    # Will mutate
-    y⁺⁺::Vector{Float64},                   # Will mutate
-    v::Vector{Float64},                     # Will mutate
-    y::Vector{Float64},                     # Will reference
-    ∇fy::Vector{Float64},                   # Will reference
-    B::Number,                              # Will reference
-    ϵ::Number,                              # Will reference
-    ρ::Number;                              # Will reference
-    inner_loop_itr_max::Number=65536        # Will reference
+    y⁺::Vector{Float64},                        # Will mutate
+    y⁺⁺::Vector{Float64},                       # Will mutate
+    v::Vector{Float64},                         # Will mutate
+    y::Vector{Float64},                         # Will reference
+    ∇fy::Vector{Float64},                       # Will reference
+    B::Number,                                  # Will reference
+    ϵ::Number,                                  # Will reference
+    ρ::Number;                                  # Will reference
+    inner_loop_itr_max::Number=65536            # Will reference
 )::Number
     ipp = this.ipp
     y⁺ .= @. y - (1/(B + ρ))*∇fy
     j = do_pgd_iteration!(
-        ipp, y⁺⁺, v, y⁺,            # will mutate
-        1/(B + ρ),                  # ref only
-        itr_max=inner_loop_itr_max,            # ref only
-        epislon=ϵ, 
+        ipp, y⁺⁺, v, y⁺,                        # will mutate
+        1/(B + ρ),                              # ref only
+        itr_max=inner_loop_itr_max,             # ref only
+        epsilon=ϵ,
         rho=ρ
     )
     if j < 0
@@ -298,20 +300,21 @@ end
 
 
 """
-Run outerloop for a given amount of iterations, or until termination condition is satisfied. 
+Run outerloop for a given amount of iterations, or until termination condition 
+is satisfied. 
 
 """
 function run_outerloop_for!(
     this::IAPGOuterLoopRunner, 
     v0::Vector{Float64},
-    max_itr::Int=2048,
-    delta::Number
+    delta::Number,
+    max_itr::Int=2048
 )::ResultsCollector
     @assert length(v0) == size(this.A, 2)
     α = 1
-    k = 1
+    k = 0
     f = this.f
-    B0 = glipz(f)
+    Bk =B0 = glipz(f)
     xk = this.xk; vk = this.vk
     xk .= v0; vk .= v0
     vk⁺ = this.v_next; yk⁺ = this.y_next; xk⁺ = this.x_next
@@ -322,8 +325,8 @@ function run_outerloop_for!(
     rstlcllctr = this.collector
 
     while true
-        k += 1; if k > max_itr break end
         j, Bk, α, ϵk = _iterate(
+            # All of these mutates. 
             this, yk⁺, xk⁺, vk⁺, this.v, ∇fy, y⁺, y⁺⁺, δy,
             xk, vk, k, α, B0, Bk
         )
@@ -331,8 +334,11 @@ function run_outerloop_for!(
             rstlcllctr, j, ϵk, norm(δy), 1/(Bk + ρ)
         )
         if norm(δy) < delta
-            # EXITS. Optimality reached. 
+            # EXITS. Optimality reached.
             break
+        end
+        k += 1; if k > max_itr 
+            break # EXITS. Maximum iteration reached. 
         end
 
 
