@@ -16,7 +16,7 @@ include("outer_loop.jl")
         C = randn(l, n)
         f = ResidualNormSquared(C, b)
         ω = OneNormFunction(0.01)
-        global OuterLoop = IAPGOuterLoopRunner(f, ω, A)
+        OuterLoop = IAPGOuterLoopRunner(f, ω, A)
 
         return OuterLoop, randn(n)
 
@@ -28,11 +28,31 @@ include("outer_loop.jl")
         return true
     end
 
-    function test_one_iteration()::Bool
-        @test "Test if one iteration is ok for the outerloop. "
+    function test_iterations()::Bool
+        @info "Test if iteration go ok for the outerloop on simple problem. "
+        # Make the test instance 
+        m = 8
+        n = 8
+        l = 8
+        A = diagm(randn(n))
+        b = zeros(m)
+        C = randn(l, n)
+        f = ResidualNormSquared(C, b)
+        ω = OneNormFunction(0.01)
+        OuterLoop = IAPGOuterLoopRunner(
+            f, ω, A, error_scale=1, rho=1
+        )
+        x0 = 10*ones(n)
+        Results = run_outerloop_for!(
+            OuterLoop, x0, 1e-10, max_itr=65536
+        )
+        @info "Reporting Results. "
+
+        return true
     end
 
 
     @test test_instantioation()
+    @test test_iterations()
 
 end

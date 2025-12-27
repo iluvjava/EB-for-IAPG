@@ -4,13 +4,13 @@ Collect the results produced by the IAPGOuterLoopRunner.
 
 It has the following
 """
-struct ResultsCollector
+mutable struct ResultsCollector
 
     j::Vector{Int}
     "Error schedule used for each iteration of the inner loop. "
     epsilon::Vector{Float64}
     "The norm of the gradient mapping. "
-    pg_norm::Vector{Float64}
+    dy::Vector{Float64}
     "Stepsize used, 1/(B + L). "
     ss::Vector{Float64}
     "Current Iterates. "
@@ -22,11 +22,14 @@ struct ResultsCollector
             Vector{Int}(), 
             Vector{Float64}(), 
             Vector{Float64}(),
+            Vector{Float64}(), 
             Vector{Float64}() 
         )
     end
 
 end
+
+
 
 """
 Add the intermediate convergence metric computed in the outer loop 
@@ -41,7 +44,7 @@ function register!(
 )::Nothing
     push!(this.j, j)
     push!(this.epsilon, ϵk)
-    push!(this.pg_norm, pg)
+    push!(this.dy, pg)
     push!(this.ss, ss)
     return nothing
 end
@@ -92,16 +95,16 @@ struct IAPGOuterLoopRunner
 
     function IAPGOuterLoopRunner(
         f::ClCnvxFxn, omega::ClCnvxFxn, A::AbstractMatrix;
-        p=2,
-        error_scale=1, 
-        rho=1
+        p::Number=2,
+        error_scale::Number=1, 
+        rho::Number=1
     )
         @assert p > 1 
         @assert error_scale > 0
+        @assert rho >= 0
+        
         # Assign. 
         E = error_scale
-        rho = rho
-        p = p
         
         # Instantiate
         m, n = size(A)
@@ -158,17 +161,18 @@ function _ipg!(
     B::Number,                                  # Will reference
     ϵ::Number,                                  # Will reference
     ρ::Number;                                  # Will reference
-    inner_loop_itr_max::Number=65536            # Will reference
+    inner_loop_itr_max::Number=4096             # Will reference
 )::Number
     ipp = this.ipp
     y⁺ .= @. y - (1/(B + ρ))*∇fy
     j = do_pgd_iteration!(
-        ipp, y⁺⁺, v, y⁺,                        # will mutate
+        ipp, v, y⁺⁺, y⁺,                        # will mutate
         1/(B + ρ),                              # ref only
         itr_max=inner_loop_itr_max,             # ref only
         epsilon=ϵ,
         rho=ρ
     )
+    @assert !any(isnan, y⁺⁺) "Nans in y⁺⁺ from the inner loop. "
     if j < 0
         # Something failed in the inner loop. 
         return j
@@ -207,8 +211,9 @@ function _ipg_ls!(
     j = _ipg!(
         this, y⁺, y⁺⁺, v,   # will mutate. 
         y, ∇fy,
-        B, ρ, ϵk
+        B, ϵk, ρ
     )
+    δy .= @. y⁺⁺ - y
 
     if j < 0  
         # RETURN. Inner loop failed. 
@@ -216,29 +221,31 @@ function _ipg_ls!(
     end
     
     if ls
-        LineSearchOk = false
-        while B < Inf
-            δy .= @. y⁺⁺ - y
+        while true
             LineSearchOk = f(y⁺⁺) - fy - dot(∇fy, δy) <= (B/2)*dot(δy, δy)
-            if LineSearchOk break end
-            if  isinf(B) 
-                # EXITS. Outer loop line search failed. 
-                return j, B 
-            end
-            j⁺ = _ipg!(
-                this, y⁺, y⁺⁺, v, 
-                y, ∇fy, B, ρ, ϵk
-            )
-            if j⁺ < 0
-                # EXITS. Inner loop failed. 
-                return j, B
+            if LineSearchOk 
+                # EXITS. Line search good. 
+                break 
             else
-                j += j⁺
+                δy .= @. y⁺⁺ - y
+                j⁺ = _ipg!(
+                    this, y⁺, y⁺⁺, v, 
+                    y, ∇fy, B, ρ, ϵk
+                )
+                if j⁺ < 0
+                    # EXITS. Inner loop failed. 
+                    return j, B
+                else
+                    j += j⁺
+                end
+                B *= 2
+                ϵk *= 2
+                if isinf(B) 
+                    # EXITS. Outer loop line search failed. 
+                    return j, B 
+                end
             end
-            B *= 2
-            ϵk *= 2
         end
-        
         if lsbtrk 
             B /= 2^(1/lsbtrk_shrinkby)
             ϵk /= 2^(1/lsbtrk_shrinkby)
@@ -277,24 +284,24 @@ function _iterate(
     ls::Bool=false,
     lsbtrk::Bool=false
 )::Tuple{Int, Float64, Float64, Float64}
-    f = this.f; ρ = this.rho;E = this.E; p = this.p
+    # Reference the constants. 
+    f = this.f; ρ = this.rho; E = this.E; p = this.p
 
     yk⁺ .= @. αk*vk + (1 - αk)*xk
     fy = grad_and_fxnval!(f, ∇fy, yk⁺)
     L0 = B0 + ρ; Lk = Bk + ρ
-    ϵk = (E*Lk/L0)/(k^p)
+    ϵk = k >= 1 ? (E*Lk/L0)/(k^p) : E
     j, Bk⁺ = _ipg_ls!(
         this, y⁺, y⁺⁺, v, δy,   # Will mutate. 
-        ∇fy, yk⁺, fy, B, ϵk,
+        ∇fy, yk⁺, fy, Bk, ϵk,
         ls=ls,
         lsbtrk=lsbtrk           # Will reference
-    ) 
-    xk⁺ .= y⁺⁺
-    vk⁺ .= @. x + (1/αk)*(xk⁺ - x)
-    Lk⁺ = Bk⁺ + ρ
-    α⁺ = (1/2)*(Lk/Lk⁺)*sqrt(
-        - αk^2 + sqrt(αk^2 + (4αk*Lk⁺)/Lk)
     )
+    xk⁺ .= y⁺⁺
+    vk⁺ .= @. xk + (1/αk)*(xk⁺ - xk)
+    Lk⁺ = Bk⁺ + ρ
+    # FORMULA HERE INCORRECT. 
+    α⁺ = (1/2)*(Lk/Lk⁺)*(-αk^2 + sqrt(αk^4 + (4*αk^2)*(Lk⁺/Lk)))
     return j, Bk⁺, α⁺, ϵk
 end
 
@@ -307,15 +314,16 @@ is satisfied.
 function run_outerloop_for!(
     this::IAPGOuterLoopRunner, 
     v0::Vector{Float64},
-    delta::Number,
-    max_itr::Int=2048
+    delta::Number;
+    max_itr::Int=512
 )::ResultsCollector
     @assert length(v0) == size(this.A, 2)
-    α = 1
     k = 0
+    α = 1
     f = this.f
-    Bk =B0 = glipz(f)
-    xk = this.xk; vk = this.vk
+    ρ = this.rho
+    Bk = B0 = glipz(f)
+    xk = this.xk; vk = this.vk; 
     xk .= v0; vk .= v0
     vk⁺ = this.v_next; yk⁺ = this.y_next; xk⁺ = this.x_next
     ∇fy = this.y1
@@ -330,20 +338,23 @@ function run_outerloop_for!(
             this, yk⁺, xk⁺, vk⁺, this.v, ∇fy, y⁺, y⁺⁺, δy,
             xk, vk, k, α, B0, Bk
         )
+        vk .= vk⁺
+        xk .= xk⁺
         register!(
             rstlcllctr, j, ϵk, norm(δy), 1/(Bk + ρ)
         )
+
         if norm(δy) < delta
             # EXITS. Optimality reached.
             break
         end
         k += 1; if k > max_itr 
-            break # EXITS. Maximum iteration reached. 
+            # EXITS. Maximum iteration reached. 
+            break 
         end
-
 
     end
 
 
-    return Nothing
+    return rstlcllctr
 end

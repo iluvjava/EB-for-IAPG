@@ -17,7 +17,8 @@ struct InexactProximalPoint
     "omega as a type of `ClCnvxFxn` must have trait `Proxable`"
     omega::ClCnvxFxn
     """
-        Inverted stepsize for ISTA evaluation. Best choice is the spectral norm of AᵀA
+        Inverted stepsize for ISTA evaluation. Best choice is the spectral
+        norm of AᵀA
     """
     t::Number
     
@@ -197,7 +198,7 @@ function do_pgd_iteration!(
     @assert size(this.v) == size(v_out)
     @assert size(this.z) == size(z_out)
     @assert epsilon > 0
-    @assert lambda > 0
+    @assert lambda > 0 "Expect λ > 0, but we had λ=$lambda. Catastrophic error."
 
     # Referenced Parameters: 
     λ = lambda
@@ -231,7 +232,7 @@ function do_pgd_iteration!(
         if !isnothing(duality_gaps)  
             push!(duality_gaps, p + q)
         end
-        if p + q <= ϵ + (ρ/2)*dot(zy, zy) 
+        if p + q <= ϵ + (ρ/2)*dot(zy, zy) && j >= 1
             # EXITS. (z⁺, v⁺) duality gap reached. 
             break
         end
