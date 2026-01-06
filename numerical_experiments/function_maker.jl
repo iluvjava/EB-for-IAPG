@@ -1,6 +1,6 @@
 # Make function for specifictype of numerical experiment problems. 
 
-
+import SparseArrays:sparse
 
 """
 Finite Differences, First order, forward, or backward differences, 1D. 
@@ -91,6 +91,24 @@ A matrix that does down sampling.
 Give a binary filter vector, it will make the down sampling matrix. 
 Which is just a diagonal I matrix with zeros on the diagonal. 
 """
-function downsample_matrix(
+function ignore_elements_matrix(
     filter::Vector{T}
 )::AbstractMatrix where {T <: Number} return spdiagm(filter) end
+
+
+"""
+It's like anti-aliasing
+Suppose we have [1, 2, 3, 4]. 
+Donw sample by 2 it makes: 
+    [(1 + 2)/2, (3 + 4)/2]=[1.5, 3.5]
+"""
+function down_sample_inhalf(n)
+
+    r = Vector{Int}()
+    c = Vector{Int}()
+    v = Vector{Float64}()
+
+
+
+    return 
+end

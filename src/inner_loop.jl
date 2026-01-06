@@ -107,8 +107,6 @@ function eval_dual_objective_at_current_point(
 end
 
 
-
-
 """
 Do one step of primal dual update, using a fixed stepsize which should be valid. 
 Update by: 
