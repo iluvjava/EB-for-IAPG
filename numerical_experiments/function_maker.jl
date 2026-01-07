@@ -13,50 +13,34 @@ Finite Differences, First order, forward, or backward differences, 1D.
 
 """
 function make_fd_matrix(n::Number, bnd_type::Int=1)::AbstractMatrix
-    @assert bnd_type == 0 || bnd_type == 2 || bnd_type == 1
+    @assert bnd_type == 0 || bnd_type == 1
     c = Vector{Int}()
     r = Vector{Int}()
     v = Vector{Float64}()
-    h = 1
-    for i in 0:(n - 1)
-        # Diagonal ones
-        push!(r, i); push!(c, i); push!(v, 1/h)
-        if bnd_type == 0 && i == n - 1
-            continue
+    if bnd_type == 1
+        for i in 1:n
+            # Diagonal ones
+            push!(r, i); push!(c, i); push!(v, 1.0)
         end
-        push!(r, i)
-        if bnd_type == 1
-            push!(c, mod(i + 1, n))
-        else
-            push!(c, i == n - 1 ? n - 2 : i + 1)
+        # Lower diagonal -1, periodic. 
+        for i in 1:n
+            push!(r, i); push!(c, mod1(i - 1, n)); push!(v, -1.0)
         end
-        push!(v, -1/h)
+    # None periodic condition here. 
+    else
+        for i in 1:n - 1
+            # upper diagonal 1
+            push!(r, i); push!(c, i + 1); push!(v, 1.0)
+        end
+        # diagonal -1, 
+        for i in 1:n - 1
+            push!(r, i); push!(c, i); push!(v, -1.0)
+        end
     end
-    r .+= 1
-    c .+= 1
+    
     return sparse(r, c, v)
 end
 
-
-"""
-Finite Differences, second order, central difference at center, 
-backwards/forward differences at boundaries. 1D
-"""
-function make_secord_fd_matrix(n::Number)
-    c = Vector{Int}()
-    r = Vector{Int}()
-    v = Vector{Float64}()
-    h = 1/n
-    bd = fd = [2, -5, 4, -1]/h
-    cd = [1, -2, 1]/h
-    # first row, forward differences. 
-
-
-    # last row, backwards differences. 
-    r .+= 1
-    c .+= 1
-    return sparse(r, c, v)
-end
 
 """
 1D convolution using a box kernel. Always periodic. 
@@ -77,7 +61,7 @@ function box_kernel_averaging(
     v = Vector{Float64}()
 
     for i = 0:(n - 1)
-        for j = (i - div(l, 2)):(i + div(l, 2))
+        for j = max((i - div(l, 2)), 0):min((i + div(l, 2)), n)
             push!(r, i); push!(c, mod(j, n)); push!(v, k)
         end
     end

@@ -6,36 +6,43 @@ abstract type FiniteDifferenceMatrix <: AbstractMatrix{Float64}
 end
 
 
-function size(this::FiniteDifferenceMatrix)::Tuple{Int, Int}
-return (this.n, this.n) end
-
-function display(this::FiniteDifferenceMatrix)::Text
-    return "$(typeof(this))"
-end
-
 function norm(this::FiniteDifferenceMatrix, p::Int)::Float64
     @assert p == 2 "Sorry, we only implemented the Frobenius Norm for "*
     "abstract type FiniteDifferenceMatrix"
-    return sqrt(2*this.n)
+    return sqrt(this.n*(this.n - 1))
 end
 
 
+### ============================================================================
 """
 Implements a first order first derivative forward finite difference 
 matrix with periodic period directly. 
 """
-struct PeriodicFastFiniteDiffMatrix <: FiniteDifferenceMatrix
+struct FastFiniteDiffMatrix <: FiniteDifferenceMatrix
     n::Int
-    function PeriodicFastFiniteDiffMatrix(n::Int) return new(n) end
+    function FastFiniteDiffMatrix(n::Int) return new(n) end
 end
 
 
+function size(this::FastFiniteDiffMatrix)::Tuple{Int, Int}
+return (this.n - 1, this.n) end
+
+function Base.getindex(this::FastFiniteDiffMatrix, i::Int, j::Int)::Float64
+    @assert i <= this.n - 1 && j <= this.n
+    if j - i == 1 
+        return 1.0
+    end
+    if j - i == 0
+        return -1.0
+    end
+    return 0.0
+end
 
 function (*)(
-    this::PeriodicFastFiniteDiffMatrix, 
+    this::FastFiniteDiffMatrix, 
     x::AbstractVector{T}
 )::AbstractVector{T} where {T<:Number}
-    y = similar(x)
+    y = zeros(this.n - 1)
     mul!(y, this, x)
     return y
 end
@@ -43,12 +50,12 @@ end
 
 function mul!(
     y::AbstractVector{T}, 
-    ::PeriodicFastFiniteDiffMatrix, 
+    ::FastFiniteDiffMatrix,  
     x::AbstractVector{T}
 )::AbstractVector{T} where T <: Number
-    n = length(x)
-    @simd for i in eachindex(x)
-        @inbounds y[i] = x[i] - x[mod(i + 1, n) + 1]
+    # @assert length(y) == length(x) - 1
+    @simd for i in eachindex(y)
+        y[i] = x[i + 1] - x[i]
     end
     return y
 end
@@ -58,44 +65,60 @@ end
 Implements the transpose of the first order, first derivative
 forward finite difference matrix with periodic period directly. 
 """
-struct PeriodicFastFiniteDiffMatrixTransposed <: FiniteDifferenceMatrix
+struct FastFiniteDiffMatrixTransposed <: FiniteDifferenceMatrix
     n::Int
-    function PeriodicFastFiniteDiffMatrixTransposed(n::Int) return new(n) end
+    function FastFiniteDiffMatrixTransposed(n::Int) return new(n) end
 end
 
-function adjoint(::PeriodicFastFiniteDiffMatrixTransposed)::AbstractMatrix
-    return PeriodicFastFiniteDiffMatrix(this.n)
+function size(this::FastFiniteDiffMatrixTransposed)::Tuple{Int, Int}
+return (this.n, this.n - 1) end
+
+function adjoint(::FastFiniteDiffMatrixTransposed)::AbstractMatrix
+    return FastFiniteDiffMatrix(this.n)
+end
+
+function Base.getindex(this::FastFiniteDiffMatrixTransposed, j::Int, i::Int)
+    @assert i <= this.n - 1 && j <= this.n
+    if j - i == 1 
+        return 1.0
+    end
+    if j - i == 0
+        return -1.0
+    end
+    return 0.0
 end
 
 transpose(
-    this::PeriodicFastFiniteDiffMatrixTransposed
+    this::FastFiniteDiffMatrixTransposed
 )::AbstractMatrix = adjoint(this)
 
-function adjoint(this::PeriodicFastFiniteDiffMatrix)::AbstractMatrix
-    return PeriodicFastFiniteDiffMatrixTransposed(this.n)
+function adjoint(this::FastFiniteDiffMatrix)::AbstractMatrix
+    return FastFiniteDiffMatrixTransposed(this.n)
 end
 transpose(
-    this::PeriodicFastFiniteDiffMatrix
+    this::FastFiniteDiffMatrix
 )::AbstractMatrix = adjoint(this)
 
 function (*)(
-    this::PeriodicFastFiniteDiffMatrixTransposed, 
+    this::FastFiniteDiffMatrixTransposed, 
     x::AbstractVector{T}
 )::AbstractVector{T} where {T <: Number}
-    y = similar(x)
+    y = zeros(this.n)
     mul!(y, this, x)
     return y
 end
 
 function mul!(
     y::AbstractVector{T}, 
-    ::PeriodicFastFiniteDiffMatrixTransposed, 
+    ::FastFiniteDiffMatrixTransposed, 
     x::AbstractVector{T}
 )::AbstractVector{T} where T <: Number
-    n = length(x)
-    @simd for i in eachindex(x)
-        @inbounds y[i] = x[i] - x[mod(i - 2, n) + 1]
+    # @assert length(y) == length(x) + 1
+    y[1] = -x[1]
+    @simd for i in eachindex(y)[2:end - 1]
+       y[i] = x[i - 1] - x[i] 
     end
+    y[end] = x[end]
     return y
 end
 
