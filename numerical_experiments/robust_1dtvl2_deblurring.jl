@@ -7,14 +7,14 @@ include("function_maker.jl")
 include("fast_finite_diff_matrix.jl")
 
 
-n = 128
+n = 1024
 
 # Setup the problems
 let
 
     global x = LinRange(-2, 2, n)
     global y = @. ((2pi*x) |> sin |> sign)
-    global B = box_kernel_averaging(n, 8)
+    global B = box_kernel_averaging(n, div(32, n))
 
     # x: Time domain of the signal. 
     # y: The true signal. 
@@ -23,36 +23,32 @@ let
     
     # Corrupt the signal
     global Blurred_Signal = B*y
-    global Corrupted_Signal = 
-        [rand() > 1/sqrt(sqrt(n)) ? NaN : x for x in Blurred_Signal] + 1e-1*randn(n)
-    # First and last element can't be nan. 
-    Corrupted_Signal[1] = Blurred_Signal[1]
-    Corrupted_Signal[end] = Blurred_Signal[end]
-    G = ignore_elements_matrix([isnan(i) ? 0.0 : 1.0 for i in Corrupted_Signal])
-    global C = G*B
-    global b = [isnan(i) ? 0.0 : i for i in Corrupted_Signal]
+    noise = 3e-1*randn(n)
+    global Corrupted_Signal = noise + Blurred_Signal
+    global C = B
+    global b = Corrupted_Signal
     
 
 end
 
 # Setup the cost functions of the optimizations problem. 
 f = ResidualNormSquared(C, b)
-ω = OneNormFunction(0.5)
+ω = OneNormFunction(10)
 # A = make_fd_matrix(n, 0)
 A = FastFiniteDiffMatrix(n)
-rho = 0.5
+rho = 1
 
 # Make the outer loop. 
 OuterLoop = IAPGOuterLoopRunner(
     f, ω, A, error_scale=64, rho=rho, store_fxn_vals=true
 )
 
-x0 = ones(n)
+x0 = zeros(n)
 
 @time global Results = run_outerloop_for!(
     OuterLoop, x0, 1e-5, 
     max_itr=1024, lsbtrk=true, show_progress=true,
-    inner_loop_settings=InnerLoopCommunicator(65536, true, 4096)
+    inner_loop_settings=InnerLoopCommunicator(65536*16, true, 4096)
 )
 
 # PLOTTING OUT THE SIGNALS =====================================================

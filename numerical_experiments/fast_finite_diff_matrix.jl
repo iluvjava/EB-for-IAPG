@@ -116,7 +116,7 @@ function mul!(
     # @assert length(y) == length(x) + 1
     y[1] = -x[1]
     @simd for i in eachindex(y)[2:end - 1]
-       y[i] = x[i - 1] - x[i] 
+        y[i] = x[i - 1] - x[i] 
     end
     y[end] = x[end]
     return y

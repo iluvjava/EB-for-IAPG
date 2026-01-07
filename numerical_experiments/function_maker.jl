@@ -54,15 +54,16 @@ function box_kernel_averaging(
     # Tolerate and handle weird inputs. 
     width = max(2, width)
     l = 2*(width - 1) + 1
-    k = 1/l
 
     r = Vector{Int}()
     c = Vector{Int}()
     v = Vector{Float64}()
 
     for i = 0:(n - 1)
-        for j = max((i - div(l, 2)), 0):min((i + div(l, 2)), n)
-            push!(r, i); push!(c, mod(j, n)); push!(v, k)
+        s = max((i - div(l, 2)), 0)
+        t = min((i + div(l, 2)), n - 1)
+        for j = s:t
+            push!(r, i); push!(c, mod(j, n)); push!(v, 1/(t - s + 1))
         end
     end
     r .+= 1; c .+= 1
