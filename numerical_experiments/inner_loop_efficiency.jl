@@ -24,7 +24,7 @@ function run_once(
     z_out, v_out, y, A, ω, λ, ϵ;
 )::Number
     iprox = InexactProximalPoint(A, ω)
-    j = do_ista_iteration!(
+    j = do_pgd_iteration!(
         iprox, v_out, z_out, y, λ, epsilon=ϵ, itr_max=2^20
     )
     return j
@@ -65,7 +65,7 @@ function plot_ribbon(
         xlabel=xlabel,
         ylabel=ylabel,
         legend=:bottomleft,  
-        yaxis=:log2, 
+        # yaxis=:log2, 
         xaxis=:log2, 
         size=plot_size,
         dpi=dpi, 
@@ -120,7 +120,6 @@ let
     n = 2048
     m = 1024
     repetition = 50
-    # exponents = -6:-1:-16|>collect
     exponents = -(LinRange(6, 16, 100)|>collect)
     radius = 20
     λ, A, ω = setup_parameters(n=n, m=m)
@@ -141,7 +140,8 @@ let
         plot_size=(800, 400), 
         xlabel="\nInner Loop Primal Dual Gap: "*L"ϵ_k"*"\n",
         ylabel="\nTotal Number of Inner loop Iterations",
-        title="5-Point Summary of Inner loop iterations varying "*L"\epsilon_k=2^{-k}", 
+        title="5-Point Summary of Inner loop iterations varying "
+            *L"\epsilon_k^\circ=2^{-k}", 
         median_style=:scatterpath
     )
     p|>display
