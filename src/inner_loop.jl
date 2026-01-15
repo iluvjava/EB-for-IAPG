@@ -135,9 +135,9 @@ function _update_dual!(
     Aᵀv::Vector{Float64},           # will Mutate
     λ::Number,                      # will ref
     τ::Number,                      # will ref
-    backtracking::Bool=true, 
-    bcktrck_shrinkage::Int=2048
-)::Number
+    backtracking::Bool, 
+    s::Int
+)::Tuple
     # Referencing. 
     A = this.A
     Aᵀ = this.AT
@@ -157,17 +157,17 @@ function _update_dual!(
             break   # we are done here. 
         end
         ∇ .= @. v⁺ - v 
-        d = (τ/2)*dot(∇, ∇)
         # Aᵀv <- Aᵀ(v⁺ - v) 
         mul!(Aᵀv, Aᵀ, ∇) 
-        if τ < Inf64 && (λ/2)*dot(Aᵀv, Aᵀv) <= d
-            τ /= 2^(1/bcktrck_shrinkage)   # Shrink τ. Backtracking.  
+        if τ < Inf64 && λ*dot(Aᵀv, Aᵀv) <= τ*dot(∇, ∇)
+            τ /= 2^(1/s)            # Shrink τ. Backtracking.  
             break
         else
-            τ *= 2                  # Increase τ, Line Search. 
+            τ *= 2                                  # Increase τ, Line Search. 
+            s *= 2                  # double shrinkage rate. 
         end
     end
-    return τ
+    return τ, s
 end
 
 
@@ -192,6 +192,7 @@ is not satisfied.
     itr_max::Int=8000, 
     duality_gaps::Union{Vector, Nothing}=nothing, # will mutate
     backtracking::Bool=true,
+    bcktrck_shrinkage::Int=2048,
     relerr_anchor::Vector{Float64}=y
 )::Number
     # check dimensions of inputs. 
@@ -205,6 +206,7 @@ is not satisfied.
     ϵ = epsilon
     ρ = rho
     τ = (this.t)*(λ)   # step size
+    s = bcktrck_shrinkage
     ω = this.omega
     z = this.z
     v = this.v
@@ -242,13 +244,14 @@ is not satisfied.
             j = -1
             break
         end
-        τ = _update_dual!(
+        τ, s = _update_dual!(
             this, 
             v⁺, AAᵀv, this.v3,      # will mutate
             v, Ay,                  # Will reference
             Aᵀv,                    # Will mutate 
             λ, τ,
             backtracking,
+            s
         )
         if isinf(τ)  
             # EXITS. Line/Backtracking failed. 

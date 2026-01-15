@@ -1,16 +1,15 @@
 using Plots, SparseArrays, ProgressMeter, Statistics, StatsPlots, 
-    DataFrames, Latexify, LaTeXStrings
+    DataFrames, Latexify, LaTeXStrings, Random
 include("../src/import_inner_loop.jl")
 
 
 function setup_parameters(
     ;m=1024,
     n=2048, 
-    λ=10,
-    h=1
+    λ=1, 
+    η=2
 )
-    A = sprand(m, n, 1/sqrt(m*n))
-    η = (1/m)*h
+    A = sprand(m, n, 1/sqrt(m*n)) + I
     ω = OneNormFunction(η)
 
     return λ, A, ω
@@ -21,11 +20,12 @@ Run once, random y, bounded norm.
 Same initial guess for the dual problem. 
 """
 function run_once(
-    z_out, v_out, y, A, ω, λ, ϵ;
+    z_out, v_out, y, A, ω, λ, ϵ; itr_max=2^20
 )::Number
     iprox = InexactProximalPoint(A, ω)
     j = do_pgd_iteration!(
-        iprox, v_out, z_out, y, λ, epsilon=ϵ, itr_max=2^20
+        iprox, v_out, z_out, y, λ, epsilon=ϵ, itr_max=itr_max, 
+        backtracking=true
     )
     return j
 end
@@ -64,7 +64,7 @@ function plot_ribbon(
         title=title,
         xlabel=xlabel,
         ylabel=ylabel,
-        legend=:bottomleft,  
+        legend=:topright,  
         # yaxis=:log2, 
         xaxis=:log2, 
         size=plot_size,
@@ -80,11 +80,13 @@ function plot_ribbon(
     )
     if show_iqr # IQR
         plot!(p, x, Q3_vals, fillrange=Q1_vals,
-              label="IQR", alpha=0.4, color=:cyan, linewidth=0)
+              label="IQR", alpha=0.4, color=:cyan, linewidth=0
+        )
     end
     if show_range # MIN, Max Range. 
         plot!(p, x, max_vals, fillrange=min_vals,
-              label="Full Range", alpha=0.2, color=:gray, linewidth=0)
+              label="Full Range", alpha=0.2, color=:gray, linewidth=0
+        )
     end
 
     return p
@@ -115,25 +117,27 @@ end
 
 
 # EFFICIENCIES TEST. 
-let 
 
-    n = 2048
-    m = 1024
-    repetition = 50
-    exponents = -(LinRange(6, 16, 100)|>collect)
-    radius = 20
-    λ, A, ω = setup_parameters(n=n, m=m)
+m = 128
+n = 128
+η = 2
+repetition = 100
+exponents = -(LinRange(16, 32, 65)|>collect)
+# radius = 100
+λ, A, ω = setup_parameters(n=n, m=m, η=η)
 
-    results = zeros(repetition, exponents |> length)
-    @showprogress for r = 1:repetition
-        v_out = zeros(m)
-        z_out = zeros(n)
-        y = radius*randn(n) 
-        for (k, ϵ) in pairs(2.0 .^ exponents)
-            results[r, k] = run_once(z_out, v_out, y, A, ω, λ, ϵ)
-        end
+results = zeros(repetition, exponents |> length)
+Threads.@threads for r = 1:repetition
+    v_out = zeros(m)
+    z_out = zeros(n)
+    for (k, ϵ) in pairs(2.0 .^ exponents)
+        y = η*sign.(randn(n))
+        y .*= η*rand(n)
+        results[r, k] = run_once(z_out, v_out, y, A, ω, λ, ϵ)
     end
+end
 
+let # THIS BLOCK IS FOR PLOTTING.  
     global p = plot_ribbon(
         2.0 .^ exponents, 
         results, 
@@ -142,7 +146,7 @@ let
         ylabel="\nTotal Number of Inner loop Iterations",
         title="5-Point Summary of Inner loop iterations varying "
             *L"\epsilon_k^\circ=2^{-k}", 
-        median_style=:scatterpath
+        median_style=:scatterpath, 
     )
     p|>display
 
@@ -153,7 +157,8 @@ let
         row_names=["ϵ = 2^($(round(k,digits=4)))" for k in exponents]
     )
     latex_table |> println
-
     savefig(p, "5p-inner-loop-j$(exponents[1])$(exponents[end]).png")
 
 end
+
+

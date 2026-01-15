@@ -11,7 +11,7 @@ using LinearAlgebra
 
 """
 struct OneNormFunction <:ClCnvxFxn
-    lambda::Float64
+    eta::Float64
 
     function OneNormFunction(lambda::Number)
         if lambda < 0 
@@ -22,11 +22,11 @@ struct OneNormFunction <:ClCnvxFxn
 end
 
 function (this::OneNormFunction)(x::AbstractVecOrMat)
-    return (this.lambda)*norm(x, 1)
+    return (this.eta)*norm(x, 1)
 end
 
 function (this::OneNormFunction)(x::Vector{Float64})
-    return (this.lambda)*norm(x, 1)
+    return (this.eta)*norm(x, 1)
 end
 
 # Traits assignment and implementations for this type
@@ -53,14 +53,15 @@ function prox!(
     rho::Number, # prox regularization parameter
     eta::Number #  this multiplies onto input x. 
 )::Nothing
-    λ = rho*(this.lambda)
+    λ = rho*(this.eta)
     y_out .= @. max(abs(eta*y) - λ, 0)*sign(eta*y)
     return nothing
 end
 
 """
-The Fenchel dual of λ‖⋅‖_1 would be indicator of {x: ‖x‖_∞ ≤ λ}. 
-Hence the prox is projecting onto hyper box: [-λ, λ]^n
+The Fenchel dual of η‖⋅‖_1 would be indicator of {x: ‖x‖_∞ ≤ η}. 
+Hence the prox is projecting onto hyper box: [-η, η]^n, it has nothing 
+to do with the prox regularization parameter. 
 """
 function dprox!(
     ::Proxable,
@@ -69,7 +70,7 @@ function dprox!(
     y::FiniteEuclideanSpace, 
     rho::Number=1 
 )::Nothing
-    λ = this.lambda
+    λ = this.eta
     y_out .= @. min(max(y, -λ), λ)
     return nothing
 end
@@ -84,8 +85,8 @@ function dval(
     x::FiniteEuclideanSpace
 )::Number
     # Loosen the criteria numerical computations issues. 
-    # Adds some slack and make use of Catastrophic cancellation errors. 
-    if norm(x, Inf) - this.lambda < eps(Float64)
+    # Adds some slack and make use of Catastrophic cancellation errors from prox. 
+    if norm(x, Inf) <= (1 + eps(Float32))*this.eta
         return 0.0
     end
     return Inf
