@@ -203,6 +203,8 @@ end
 It's a class made to model the function: 
 X ↦ (α/2)‖A*X*C - B‖_F^2
 
+#LATER: This struct is not yet finished. 
+
 Here, A, C are both matrices. 
 This function can represent more advanced image bluring tasks. 
 But it's still obliged to operate on vector instead of, just matrix. 
@@ -220,12 +222,118 @@ struct MatrixResidualNormSquared <: ClCnvxFxn
     "q is the same shape as Ax "
     Q::AbstractMatrix{Float64}
 
-    
 end
 
 
 # ------------------------------------------------------------------------------
 
-struct SoftMaxLogistic <: ClCnvxFxn
-    
+"""
+x |-> (1/2)dist(Ax - b | [-r, r]^n)^2
+#PLANNED: Implemented this type, and then perform TV L2 experiment 
+using this objective function instead. 
+
+"""
+struct CubeDistanceSquaredAffine <: ClCnvxFxn
+    A::AbstractMatrix{Float64}
+    b::AbstractVector{Float64}
+    r::Number
+
+    AT::AbstractMatrix{Float64}
+    "Allocated memory for primal space.  "
+    p::AbstractVector{Float64}
+    "Allocated memory space for dual space. "
+    q::AbstractVector{Float64}
+
+    function CubeDistanceSquaredAffine(
+        A::AbstractMatrix{Float64}, 
+        b::AbstractVector{Float64}, 
+        r::Number
+    )
+    @assert r >= 0 "r must be greater than 0 but we have r=$r". 
+        this = new()
+        AT = transpose(A)
+        p = zeros(size(A, 2))
+        q = zeros(size(A, 1))
+        return new(A, b, r, AT, p, q)
+    end
+end
+
+
+
+"""
+Assign differentiable trait to ResidualNormSquared Type. 
+"""
+function differentiable_trait_assigner(
+    ::CubeDistanceSquaredAffine
+)::TraitsOfClCnvxFxn
+    return Differentiable()
+end
+
+"""
+Compute the gradient and the function value for type CubeDistanceSquaredAffine. 
+The function value is by: f(x) = (1/2)dist(Ax - b | [-λ, λ]^n)^2. 
+There are ways to compute the function value and its gradient. 
+The calculation shows: 
+1. f(x) = (1/2)‖ prox(λ‖⋅‖_1 @ Ax - b) ‖^2
+2. ∇f(x) = Aᵀ prox(λ‖⋅‖_1 @ Ax - b)
+
+Where prox(λ‖⋅‖_1 @ x) = max.(|x| - λ, 0)*sign.(x). 
+Here are the intermediate values we would need to allocate memory: 
+1. Ax - b, then prox(λ‖⋅‖_1 @ Ax - b)
+2. The out put of Aᵀx, which is of a different dimension. 
+
+"""
+function grad_and_fxnval!(
+    ::Differentiable,
+    this::CubeDistanceSquaredAffine, 
+    x::FiniteEuclideanSpace,
+    x_out::FiniteEuclideanSpace
+)::Number
+    p = this.p, q = this.q, r = this.r
+    Aᵀ = this.AT
+    mul!(p, A, b)
+    p .= @. max(abs(p) - r, 0)*sign(p)
+    # Function value ready. 
+    fxnval = dot(p, p)/2
+    # Assign the gradient. 
+    mul!(x_out, Aᵀ, x)
+    return fxnval
+end
+
+"""
+The Lipschitz smoothness constant for function: (1/2)dist(Ax - b | [-λ, λ]^n)^2. 
+Recall that the gradient is given by: 
+    Aᵀ prox(λ‖⋅‖_1 @ Ax - b)
+The Lipschitz smoothness is the same as the Lipschitz continuity modulo for the 
+gradient, which is 1 for prox(λ‖⋅‖_1 @ x). 
+Therefore, the Lipschitz smoothness constant would be ‖A‖_2^2. 
+It is the spectral norm squared, and its upper bound is Frobenius norm of A
+squared. 
+
+"""
+function glipz(
+    ::Differentiable, 
+    this::CubeDistanceSquaredAffine
+)::Number
+    return norm(this.A)
+end
+
+
+
+struct BallDistanceSquaredMatrix <: ClCnvxFxn
+    r::Int
+    A::AbstractMatrix{Float64}
+    b::AbstractVector{Float64}
+end
+
+"""
+Assign differentiable trait to ResidualNormSquared Type
+"""
+function differentiable_trait_assigner(
+    ::BallDistanceSquaredMatrix
+)::TraitsOfClCnvxFxn
+    # Return the trait type: Differentiable for the differentiable
+    # interface. 
+
+    return Differentiable()
 end

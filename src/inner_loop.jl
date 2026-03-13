@@ -25,16 +25,18 @@ struct InexactProximalPoint
     # Fields that will mutate when running now follows.
     z::Vector{Float64}
     v::Vector{Float64}
-    "Intermediate: Aᵀv. "
+    "Intermediate: Aᵀv."
     z1::Vector{Float64}
-    "Intermediate: z - y. "
+    "Intermediate: z - y."
     z2::Vector{Float64}
     "Intermediate: Az. "
     v1::Vector{Float64}
-    "Intermediate: AAᵀv. "
+    "Intermediate: AAᵀv."
     v2::Vector{Float64}
     "Intermediate variable for computing prox of ω⋆"
     v3::Vector{Float64}
+    "Intermediate: Ay."
+    v4::Vector{Float64}
     
 
 
@@ -50,12 +52,14 @@ struct InexactProximalPoint
         # memory allocations. 
         v1 = similar(v)  # Az
         z1 = similar(z)  # Aᵀv
+        z2 = similar(z)  # z - y
         v2 = similar(v)  # AAᵀv
         v3 = similar(v)  # Proximal gradient on ω⋆
-        z2 = similar(z)  # z - y
+        v4 = similar(v)  # Ay
+        
         return new(
             A, A_adj, omega, t, 
-            z, v, z1, z2, v1, v2, v3
+            z, v, z1, z2, v1, v2, v3, v4
         )
     end
 
@@ -212,7 +216,8 @@ is not satisfied.
     v = this.v
     A = this.A
     Aᵀ = this.AT
-    Ay = A*y
+    Ay = this.v4
+    mul!(Ay, A, y)
     # Mutating running parameters: 
     Az = this.v1
     Aᵀv = this.z1

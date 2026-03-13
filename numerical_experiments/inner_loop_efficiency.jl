@@ -142,10 +142,10 @@ let # THIS BLOCK IS FOR PLOTTING.
         2.0 .^ exponents, 
         results, 
         plot_size=(800, 400), 
-        xlabel="\nInner Loop Primal Dual Gap: "*L"ϵ_k"*"\n",
-        ylabel="\nTotal Number of Inner loop Iterations",
+        xlabel="\nInner Loop Primal Dual Gap: "*L"ϵ_i^\circ"*"\n",
+        ylabel="\nInner loop Iterations: \$j\$",
         title="5-Point Summary of Inner loop iterations varying "
-            *L"\epsilon_k^\circ=2^{-k}", 
+            *L"\epsilon_i^\circ", 
         median_style=:scatterpath, 
     )
     p|>display

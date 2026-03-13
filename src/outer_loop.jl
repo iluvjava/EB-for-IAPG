@@ -39,11 +39,11 @@ Collect the results produced by the IAPGOuterLoopRunner.
 It has the following
 """
 mutable struct ResultsCollector
-
+    "Iteration by the inner loop. "
     j::Vector{Int}
     "Error schedule used for each iteration of the inner loop. "
     epsilon::Vector{Float64}
-    "The norm of the gradient mapping. "
+    "‖xk - yk‖ "
     dy::Vector{Float64}
     "Stepsize used, 1/(B + L). "
     ss::Vector{Float64}
@@ -97,6 +97,7 @@ function initialize!(
         push!(this.fxn_vals, f(x) + omega(this.Ax))
     end
 end
+
 
 """
 Add the intermediate convergence metric computed in the outer loop 
@@ -152,7 +153,7 @@ struct InnerLoopCommunicator
     # 0. The progress meter. 
     # 1. Last Inner Loop Total Iterations Counts. 
     # 2. Outer Loop stoping conditions over tolerance. 
-    # 3. Current iteration of the inner loop
+    # 3. Current iteration of the inner loop.
 
     function InnerLoopCommunicator(
         itr_max::Int=4096, 
@@ -454,12 +455,13 @@ function run_outerloop_for!(
     rstlcllctr = this.collector
     
     initialize!(rstlcllctr, xk, f, this.A, this.omega)
-    ProgMeter = ProgressThresh(tol; desc="‖x_k - y_k‖:",dt=0.1)
+    ProgMeter = ProgressThresh(tol; desc="‖x_k - y_k‖:", dt=0.1)
     for k = 0:max_itr
         j, Bk, α, ϵk = _iterate(
             # All of these mutates. 
             this, yk⁺, xk⁺, vk⁺, this.v, ∇fy, y⁺, y⁺⁺, δy,
             xk, vk, k, α, B0, Bk, 
+            # These will reference. 
             ls, lsbtrk, lsbtrk_shrinkby, inner_loop_settings
         )
         # STORE. The iterates. 

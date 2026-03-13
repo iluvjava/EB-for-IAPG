@@ -7,7 +7,7 @@ include("function_maker.jl")
 include("fast_finite_diff_matrix.jl")
 
 
-n = 2048
+n = 1024
 
 # Setup the problems
 let
@@ -36,7 +36,7 @@ f = ResidualNormSquared(C, b)
 ω = OneNormFunction(10.0)
 # A = make_fd_matrix(n, 0)
 A = FastFiniteDiffMatrix(n)
-rho = 1
+rho = 1e-5
 
 # Make the outer loop. 
 OuterLoop = IAPGOuterLoopRunner(
@@ -44,9 +44,10 @@ OuterLoop = IAPGOuterLoopRunner(
 )
 
 x0 = zeros(n)
+tol = 1e-8
 
 @time global Results = run_outerloop_for!(
-    OuterLoop, x0, 1e-8, 
+    OuterLoop, x0, tol, 
     max_itr=1024, lsbtrk=true, show_progress=true,
     inner_loop_settings=InnerLoopCommunicator(65536*16, true, 4096)
 )
@@ -97,7 +98,7 @@ p2 |> display
 savefig(p2, "Ground Truth VS Recovered Signal N=$n=n.png")
 
 # ==============================================================================
-# INNTER LOOP ITERATION RELATIVE TO OTHER QUANTITIES 
+# TOTAL INNER LOOP ITERATIVE COMPLEXITY
 # ==============================================================================
 
 InnerLoop_ItrJ_Cum = accumulate(+, Results.j[1:end - 1]) # prevent last one is -1.
@@ -118,41 +119,40 @@ p3 = plot(
 p3 |> display
 savefig(p3, "Cum Inner Loop Itr Per Outer Loop N=$n.png")
 
-# Total inner loop iterations vs log2(‖xk-yk‖)
+# ==============================================================================
+# CONVERGENCE TO STATIONARITY CONDITION RELATIVE TO TOTAL INNER LOOP ITERATIONS
+# ==============================================================================
+# Log log plot of: 
+# 1. X-Axis is the array of the total number of iteration by the inner loop 
+#    for every outer loop. 
+# 2. Y-Axis is the value of the residual, measured at that outer loop. 
+# Overall we expect a O(ε^(-1)\ln(1/ε)) relation between the quantities, 
+# We would need a reference plot for that yep. 
 
-Min_Residuals = Results.dy
-Total_InnerLoop_IterJ = accumulate(+, Results.j)
-p4 = plot(
-    Total_InnerLoop_IterJ, 
-    Min_Residuals, 
-    xscale=:log2, yscale=:log2,
-    minorgrid=true, minorticks=4, 
-    xlabel="\$\\sum_{i = 1}^k J^{(i)}\$\n",
-    ylabel="\n\$\\left\\Vert x_k - y_k\\right\\Vert\$", 
-    title="Total Inner Loop Iterations VS Residual \$\\Vert x_k - y_k\\Vert\$", 
-    size=(800, 600), dpi=330
+
+Residuals = Results.dy
+Js = Results.j
+J_Max = accumulate(max, Js)
+J_Max_Weighted = J_Max.*(1: (Js |> length))
+J_Max_Weighted_Residuals = J_Max_Weighted.*Residuals
+
+
+p4 = scatter(
+    Residuals.^(-1),
+    J_Max_Weighted_Residuals,
+    xscale=:log2, 
+    #yscale=:log2,
+    minorgrid=true, minorticks=4,
+    xlabel=L"\frac{1}{\left\Vert x_t - y_t \right\Vert}",
+    ylabel="\n"*L"(t + 1)\Vert x_t - y_t \Vert\max_{i = 1, \ldots, t}J_i",
+    # title="Total Inner Loop Iterations VS Residual \$\\Vert x_k - y_k\\Vert\$", 
+    size=(800, 600), dpi=330, 
+    markershape=:+, 
+    markersize=5
+)
+plot!(
+    p4, 
+    Residual_Max.^(-1),
+    J_Summed_UpperBound.*Residual_Max,
 )
 p4|>display
-savefig(p4, "Cum Inner Loop Itr vs Stationarity N=$n.png")
-
-# Relative + Absolute Tolerance 
-# VS Inner Loop Iteration per Outer Loop Iterations
-# Expect Log Log Relations. 
-
-# Epsilons = Results.epsilon
-# Relative_Errors = @. (Results.dy^2)*rho*Results.ss/2
-# TotalErrors = @. Epsilons + Relative_Errors
-
-# p5 = scatter(
-#     Epsilons, TotalErrors, 
-#     xscale=:log2, yscale=:log2, 
-#     minorgrid=true, minorticks=2, 
-#     marker=:x, markerstrokewidth=2, markersize=5, 
-#     size=(800, 600), dpi=330, 
-#     title="\$\\epsilon_k\$ vs \$J^{(k)}\$", 
-#     xlabel="\$\\epsilon_k\$", 
-#     ylabel="\$J^{(k)}\$"
-# )
-
-# p5 |> display
-# savefig("Epsilonk vs Jk N=$n.png")
