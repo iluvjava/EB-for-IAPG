@@ -241,20 +241,15 @@ struct CubeDistanceSquaredAffine <: ClCnvxFxn
     AT::AbstractMatrix{Float64}
     "Allocated memory for primal space.  "
     p::AbstractVector{Float64}
-    "Allocated memory space for dual space. "
-    q::AbstractVector{Float64}
 
     function CubeDistanceSquaredAffine(
         A::AbstractMatrix{Float64}, 
         b::AbstractVector{Float64}, 
         r::Number
     )
-    @assert r >= 0 "r must be greater than 0 but we have r=$r". 
-        this = new()
-        AT = transpose(A)
-        p = zeros(size(A, 2))
-        q = zeros(size(A, 1))
-        return new(A, b, r, AT, p, q)
+        @assert r >= 0 "r must be greater than 0 but we have r=$r."
+        p = zeros(size(A, 1)) # to store Ax
+        return new(A, b, r, transpose(A), p)
     end
 end
 
@@ -289,15 +284,23 @@ function grad_and_fxnval!(
     x::FiniteEuclideanSpace,
     x_out::FiniteEuclideanSpace
 )::Number
-    p = this.p, q = this.q, r = this.r
-    Aᵀ = this.AT
-    mul!(p, A, b)
-    p .= @. max(abs(p) - r, 0)*sign(p)
+    p = this.p; r = this.r; b = this.b
+    A = this.A; Aᵀ = this.AT
+    mul!(p, A, x)
+    p .= @. max(abs(p - b) - r, 0)*sign(p - b)
     # Function value ready. 
     fxnval = dot(p, p)/2
     # Assign the gradient. 
-    mul!(x_out, Aᵀ, x)
+    mul!(x_out, Aᵀ, p)
     return fxnval
+end
+
+function (this::CubeDistanceSquaredAffine)(x::AbstractVector{Float64})::Number
+    p = this.p; r = this.r; b = this.b
+    A = this.A
+    mul!(p, A, x)
+    p .= @. max(abs(p - b) - r, 0)*sign(p - b)
+    return dot(p, p)/2
 end
 
 """
@@ -315,7 +318,7 @@ function glipz(
     ::Differentiable, 
     this::CubeDistanceSquaredAffine
 )::Number
-    return norm(this.A)
+    return norm(this.A)^2
 end
 
 

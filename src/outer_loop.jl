@@ -167,8 +167,6 @@ end
 
 
 
-
-
 struct IAPGOuterLoopRunner
     f::ClCnvxFxn                # differentiable. 
     omega::ClCnvxFxn            # Proxable. 
@@ -256,7 +254,6 @@ These will get mutated:
 - `y⁺⁺`: Temporary of `prox[g/(B + ρ)](y⁺)`
 - `v`: Temporary mutating vector for the dual iterates of the inexact proximal
 proximal gradient method. 
-
 
 
 """
