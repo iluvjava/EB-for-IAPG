@@ -8,6 +8,10 @@ include("fast_finite_diff_matrix.jl")
 include("fit_model.jl")
 
 
+
+
+
+
 n = 2048
 WORKSPACE_DIR = "saved_workspace_n=$n"
 WORKSPACE_FILE = "$WORKSPACE_DIR/workspace_N=$n.jld2"
@@ -113,23 +117,23 @@ savefig(p2, "Ground Truth VS Recovered Signal N=$n=n.png")
 # ==============================================================================
 
 # prevent last one is -1.
-InnerLoop_ItrJ_Cum = accumulate(+, Results.j[1:end - 1]) 
-ks = 1:(length(Results.j) - 1 )
-p3 = plot(
-    ks, 
-    (@. InnerLoop_ItrJ_Cum/ks),
-    title="Illustrating if: \$k^{-1}"*
-    "\\left(\\sum_{i = 1}^kJ^{(i)}\\right)\\propto \\log_2(k)\$",
-    label="Accmulated Inner Loop Iterations over k", 
-    xscale=:log2, xlabel="\$k\$: Iteration of the Outerloop", 
-    ylabel="\n\$k^{-1}\\left(\\sum_{i = 1}^kJ^{(i)}\\right)\$\n", 
-    color=:gray, linewidth=4,
-    size=(800, 600), 
-    dpi=330
-)
+# InnerLoop_ItrJ_Cum = accumulate(+, Results.j[1:end - 1]) 
+# ks = 1:(length(Results.j) - 1 )
+# p3 = plot(
+#     ks, 
+#     (@. InnerLoop_ItrJ_Cum/ks),
+#     title="Illustrating if: \$k^{-1}"*
+#     "\\left(\\sum_{i = 1}^kJ^{(i)}\\right)\\propto \\log_2(k)\$",
+#     label="Accmulated Inner Loop Iterations over k", 
+#     xscale=:log2, xlabel="\$k\$: Iteration of the Outerloop", 
+#     ylabel="\n\$k^{-1}\\left(\\sum_{i = 1}^kJ^{(i)}\\right)\$\n", 
+#     color=:gray, linewidth=4,
+#     size=(800, 600), 
+#     dpi=330
+# )
 
-p3 |> display
-savefig(p3, "Cum Inner Loop Itr Per Outer Loop N=$n.png")
+# p3 |> display
+# savefig(p3, "Cum Inner Loop Itr Per Outer Loop N=$n.png")
 
 # ==============================================================================
 # CONVERGENCE TO STATIONARITY CONDITION RELATIVE TO TOTAL INNER LOOP ITERATIONS
@@ -170,7 +174,7 @@ p4 = scatter(
     xscale=:log2, yscale=:log2,
     xlabel=L"\sum_{i=1}^k J^{(i)}",
     ylabel=L"\Vert x_k - y_k\Vert",
-    title="Residual vs Cumulative Inner Loop Iterations",
+    title="Residual vs Inner Loop Iterations Summed",
     label="Data",
     markershape=:+, markersize=5,
     size=(800, 600), dpi=330
@@ -189,12 +193,27 @@ x_grid, y_ref = fit_ref_line(Results.j, Results.dy)
 
 plot!(
     p4, x_grid, y_ref,
-    label=L"c_1 \cdot \ln(J)/J",
+    label=L"c \cdot \ln(\min(\gamma, J))^\alpha / (\min(\gamma, J)^\beta",
     color=:red, linewidth=2
 )
 p4 |> display
-savefig(p4, "Cum Inner Loop Itr vs Stationarity N=$n.png")
+savefig(p4, "Summed Inner Loop Itr vs Residual N=$n.png")
 
+
+# ==============================================================================
+# OUTERLOOP ITERATION VS INNER LOOP ITERATION
+# ==============================================================================
+p5 = scatter(
+    Js, xscale=:log2,
+    label="Data", 
+    xlabel="Outer loop iteration: k", 
+    ylabel="\n\$J_k\$ such that: "*L"\epsilon_k"*" tolerance is reached",
+    title="\$J_k\$ vs \$k\$",
+    markershape=:+, markersize=5,
+    size=(800, 600), dpi=430, legend=:bottomright, 
+)
+p5 |> display
+savefig(p5, "Jk vs k N=$n.png")
 
 
 # ==============================================================================
