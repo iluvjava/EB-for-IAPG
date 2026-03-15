@@ -5,6 +5,7 @@ include("../src/import_inner_loop.jl")
 include("../src/outer_loop.jl")
 include("function_maker.jl")
 include("fast_finite_diff_matrix.jl")
+include("fit_model.jl")
 
 
 n = 2048
@@ -174,8 +175,20 @@ p4 = scatter(
     markershape=:+, markersize=5,
     size=(800, 600), dpi=330
 )
+
+# Model_Alpha = 6.0
+# Model_Beta = 2.2
+# Model_C = 7.1e5
+# Model_C = 2.5e4
+
+# Guessed_Model(x) = max(1,log(x)^2.5)/(2e-2*x + 1)
+# Guessed_Model(x) = Model_C*(max(1, log(x)^Model_Alpha))/(x)^Model_Beta
+# Guessed_Model(x) = Model_C*(max(1, log(max(2^16, x))^Model_Alpha))/max(2^16, x)^Model_Beta
+
+x_grid, y_ref = fit_ref_line(Results.j, Results.dy)
+
 plot!(
-    p4, J_Summed, (@. max(2, log(J_Summed)^2.5)/(2e-2*J_Summed + 1)), # This model is as close as we can get. 
+    p4, x_grid, y_ref,
     label=L"c_1 \cdot \ln(J)/J",
     color=:red, linewidth=2
 )
