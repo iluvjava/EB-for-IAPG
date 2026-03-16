@@ -8,10 +8,6 @@ include("fast_finite_diff_matrix.jl")
 include("fit_model.jl")
 
 
-
-
-
-
 n = 2048
 WORKSPACE_DIR = "saved_workspace_n=$n"
 WORKSPACE_FILE = "$WORKSPACE_DIR/workspace_N=$n.jld2"
@@ -113,29 +109,6 @@ p2 |> display
 savefig(p2, "Ground Truth VS Recovered Signal N=$n=n.png")
 
 # ==============================================================================
-# TOTAL INNER LOOP ITERATIVE COMPLEXITY
-# ==============================================================================
-
-# prevent last one is -1.
-# InnerLoop_ItrJ_Cum = accumulate(+, Results.j[1:end - 1]) 
-# ks = 1:(length(Results.j) - 1 )
-# p3 = plot(
-#     ks, 
-#     (@. InnerLoop_ItrJ_Cum/ks),
-#     title="Illustrating if: \$k^{-1}"*
-#     "\\left(\\sum_{i = 1}^kJ^{(i)}\\right)\\propto \\log_2(k)\$",
-#     label="Accmulated Inner Loop Iterations over k", 
-#     xscale=:log2, xlabel="\$k\$: Iteration of the Outerloop", 
-#     ylabel="\n\$k^{-1}\\left(\\sum_{i = 1}^kJ^{(i)}\\right)\$\n", 
-#     color=:gray, linewidth=4,
-#     size=(800, 600), 
-#     dpi=330
-# )
-
-# p3 |> display
-# savefig(p3, "Cum Inner Loop Itr Per Outer Loop N=$n.png")
-
-# ==============================================================================
 # CONVERGENCE TO STATIONARITY CONDITION RELATIVE TO TOTAL INNER LOOP ITERATIONS
 # ==============================================================================
 # Log log plot of: 
@@ -180,16 +153,9 @@ p4 = scatter(
     size=(800, 600), dpi=330
 )
 
-# Model_Alpha = 6.0
-# Model_Beta = 2.2
-# Model_C = 7.1e5
-# Model_C = 2.5e4
-
-# Guessed_Model(x) = max(1,log(x)^2.5)/(2e-2*x + 1)
-# Guessed_Model(x) = Model_C*(max(1, log(x)^Model_Alpha))/(x)^Model_Beta
-# Guessed_Model(x) = Model_C*(max(1, log(max(2^16, x))^Model_Alpha))/max(2^16, x)^Model_Beta
-
-x_grid, y_ref = fit_ref_line(Results.j, Results.dy)
+GusssedModel = StrangeTwoPhaseLogLogModel()
+fit_model!(GusssedModel, Results.j, Results.dy)
+x_grid, y_ref = ref_line(GusssedModel)
 
 plot!(
     p4, x_grid, y_ref,
@@ -205,13 +171,30 @@ savefig(p4, "Summed Inner Loop Itr vs Residual N=$n.png")
 # ==============================================================================
 p5 = scatter(
     Js, xscale=:log2,
-    label="Data", 
-    xlabel="Outer loop iteration: k", 
+    label="Data",
+    xlabel="Outer loop iteration: k",
     ylabel="\n\$J_k\$ such that: "*L"\epsilon_k"*" tolerance is reached",
     title="\$J_k\$ vs \$k\$",
     markershape=:+, markersize=5,
-    size=(800, 600), dpi=430, legend=:bottomright, 
+    size=(800, 600), dpi=430, legend=:bottomright,
 )
+
+# Log-linear regression: Jk = a + b*ln(k)  =>  ref line: exp(a)*k^b
+# — Claude Sonnet 4.6
+# - Alto
+let
+    k = Float64.(1:length(Js))
+    X = hcat(ones(length(k)), log.(k))
+    a, b = X \ Float64.(Js)
+    k_ref = exp.(LinRange(1.0, log(length(Js)), 300))
+    @info "The ref line for Outer Loop Vs Inner Loop has: \n "*
+    "a=$a, b=$b. "
+    plot!(
+        p5, k_ref, @.(a + b*log(k_ref)),
+        label=L" y = log(e^a k^b)", color=:red, linewidth=2
+    )
+end
+
 p5 |> display
 savefig(p5, "Jk vs k N=$n.png")
 
