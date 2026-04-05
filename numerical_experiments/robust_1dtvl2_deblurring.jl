@@ -118,12 +118,12 @@ savefig(p2, "Ground Truth VS Recovered Signal N=$n=n.png")
 AbsTols = Results.abstols
 Jk = Results.j
 p3 = scatter(
-    AbsTols, @.(1/Jk), xscale=:log2, yscale=:log2, 
-    ylabel=L"J_k^{-1}", 
+    AbsTols, @.(Jk), xscale=:log2, # yscale=:log2, 
+    ylabel=L"J_k", 
     xlabel=L"\epsilon^\circ_k", 
     title=L"J_k "*" vs "*L" \epsilon_k^\circ",
     label="Data",
-    legend=:topleft,
+    legend=:bottomleft,
     markersize=3,
     marker=:x, 
     markerstrokewidth=1.5,
@@ -150,18 +150,19 @@ let
     # - Alto: Commanded Claude for implementations.
     # — Claude Sonnet 4.6
     x = Float64.(AbsTols)
-    y = @. log(1.0 / Float64(Jk))
+    y = Float64.(Jk)
     lo, hi = quantile(y, 0.10), quantile(y, 0.90)
     mask = (y .>= lo) .& (y .<= hi)
     X = hcat(ones(sum(mask)), log.(x[mask]))
-    lna, b = X \ y[mask]
-    a = exp(lna)
+    a, b = X \ y[mask]
     x_ref = exp.(LinRange(log(minimum(x)), log(maximum(x)), 300))
     plot!(
-        p3, x_ref, @.(a * x_ref^b),
-        label=L"a(ϵ_k^∘)^b", color=:red, linewidth=2
+        p3, x_ref, (@. a + b*log(x_ref)),
+        label=L"a + b\ln(ϵ_k^∘)", 
+        color=:red, 
+        linewidth=2
     )
-    @info "Model 1/Jk = a(ϵ_k^∘)^b fitted with a=$a, b=$b"  
+    @info "Model Jk = a + b ln(ϵ_k^∘) fitted with a=$a, b=$b"  
 end
 
 p3 |> display
@@ -280,7 +281,7 @@ let
     "Iterations Vs Inner Loop Iterations has: \n a=$a, b=$b."
     plot!(
         p5, k_ref, @.(a + b*log(k_ref)),
-        label=L" y = log(e^a k^b)", color=:red, linewidth=2
+        label=L" a + b\ln(k)", color=:red, linewidth=2
     )
 end
 
